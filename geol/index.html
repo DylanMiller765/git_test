@@ -3,48 +3,45 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>GEOL 1304 Study</title>
-<style>html,body{margin:0;min-height:100%;background:#0b1020;color:#eef3ff;font-family:system-ui,-apple-system,sans-serif}.loading{padding:32px;max-width:720px;margin:auto}.loading b{display:block;font-size:22px;margin-bottom:8px}.error{color:#ffb6bd;white-space:pre-wrap}</style>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#0b1020;color:#eef3ff;font-family:system-ui,-apple-system,sans-serif;overflow:hidden}
+#status{padding:32px;max-width:760px;margin:auto}.big{display:block;font-size:22px;font-weight:800;margin-bottom:8px}.err{color:#ffb6bd;white-space:pre-wrap}
+#studyFrame{display:block;width:100%;height:100%;border:0;background:#0b1020}
+</style>
 </head>
-<body><div class="loading" id="loading"><b>Loading study guide…</b><span>Pulling the latest interactive version.</span></div>
+<body><div id="status"><span class="big">Loading study guide…</span><span>Pulling the latest interactive version.</span></div>
 <script>
 (async()=>{
   const base='https://raw.githubusercontent.com/DylanMiller765/git_test/main/geol/';
   const bust='?v='+Date.now();
-  const chunkUrls=Array.from({length:9},(_,i)=>base+'chunk'+String(i+1).padStart(2,'0')+'.txt'+bust);
-  const questionUrls=['questions_ch2.json','questions_ch3.json','questions_ch4.json','questions_ch5.json'].map(x=>base+x+bust);
-  const [chunkResponses,questionResponses]=await Promise.all([
-    Promise.all(chunkUrls.map(u=>fetch(u,{cache:'no-store'}))),
-    Promise.all(questionUrls.map(u=>fetch(u,{cache:'no-store'})))
-  ]);
-  chunkResponses.forEach((r,i)=>{if(!r.ok)throw new Error('Failed loading study file '+(i+1));});
-  questionResponses.forEach((r,i)=>{if(!r.ok)throw new Error('Failed loading question bank '+(i+2));});
-  const html=(await Promise.all(chunkResponses.map(r=>r.text()))).join('');
-  const extras=(await Promise.all(questionResponses.map(r=>r.json()))).flat();
-  const parsed=new DOMParser().parseFromString(html,'text/html');
-  const scripts=[...parsed.querySelectorAll('script')].map(s=>s.textContent||'');
-  parsed.querySelectorAll('script').forEach(s=>s.remove());
-  if(scripts.length<2)throw new Error('Study scripts were incomplete.');
-  document.title=parsed.title||'GEOL 1304 Test 1';
-  document.head.querySelectorAll('style').forEach(s=>s.remove());
-  parsed.head.querySelectorAll('style').forEach(s=>document.head.appendChild(s.cloneNode(true)));
-  document.body.innerHTML=parsed.body.innerHTML;
-  const run=code=>{const s=document.createElement('script');s.textContent=code;document.body.appendChild(s);s.remove();};
-  run(scripts[0]);
-  if(!window.DATA||!Array.isArray(window.DATA.questions))throw new Error('Study data failed to initialize.');
-  const existing=new Set(window.DATA.questions.map(q=>q.q));
-  extras.forEach(q=>{if(!existing.has(q.q)){window.DATA.questions.push(q);existing.add(q.q);}});
-  const quick=document.querySelector('#quick .sec-head p');
-  if(quick)quick.textContent='15 questions per chapter · 75 total. Pick an answer, then read the explanation so the reasoning sticks.';
-  const mockTitle=document.querySelector('#mock h2');
-  if(mockTitle)mockTitle.textContent='10-question Practice Free Response Mock';
-  const mockNote=document.querySelector('#mock .note');
-  if(mockNote&&!mockNote.textContent.includes('not the professor'))mockNote.insertAdjacentHTML('afterbegin','<b>Practice format — not the professor\'s confirmed question count.</b> ');
-  let appCode=scripts[1].replace('["Index fossils","https://www.youtube.com/watch?v=wAFmS7J7gmU"],','');
-  run(appCode);
-  document.documentElement.dataset.studyReady='true';
+  const chunks=Array.from({length:9},(_,i)=>base+'chunk'+String(i+1).padStart(2,'0')+'.txt'+bust;
+  const banks=['questions_ch2.json','questions_ch3.json','questions_ch4.json','questions_ch5.json'].map(x=>base+x+bust);
+  const responses=await Promise.all([...chunks,...banks].map(u=>fetch(u,{cache:'no-store'})));
+  responses.forEach((r,i)=>{if(!r.ok)throw new Error('Could not load study file '+(i+1)+' (HTTP '+r.status+').');});
+  const chunkText=await Promise.all(responses.slice(0,9).map(r=>r.text()));
+  const bankData=await Promise.all(responses.slice(9).map(r=>r.json()));
+  let html=chunkText.join('');
+  const extras=bankData.flat();
+
+  html=html.replace('["Index fossils","https://www.youtube.com/watch?v=wAFmS7J7gmU"],','');
+
+  const close='</scr'+'ipt>';
+  const firstClose=html.indexOf(close);
+  if(firstClose<0)throw new Error('Could not find the study data script.');
+  const safeExtras=JSON.stringify(extras).replace(/</g,'\\u003c');
+  const inject='<script>(function(){const extras='+safeExtras+';if(!window.DATA||!Array.isArray(window.DATA.questions))return;const seen=new Set(window.DATA.questions.map(q=>q.q));extras.forEach(q=>{if(!seen.has(q.q)){window.DATA.questions.push(q);seen.add(q.q);}});})();'+close;
+  html=html.slice(0,firstClose+close.length)+inject+html.slice(firstClose+close.length);
+
+  const frame=document.createElement('iframe');
+  frame.id='studyFrame';
+  frame.title='GEOL 1304 Study Guide';
+  frame.addEventListener('load',()=>{document.title='GEOL 1304 Test 1';});
+  document.body.innerHTML='';
+  document.body.appendChild(frame);
+  frame.srcdoc=html;
 })().catch(err=>{
   console.error(err);
-  document.body.innerHTML='<div class="loading error"><b>Study guide failed to load.</b>'+String(err&&err.message||err)+'<br><br>Refresh once. If this keeps happening, tell me the exact message shown here.</div>';
+  document.getElementById('status').innerHTML='<span class="big err">Study guide failed to load.</span><span class="err">'+String(err&&err.message||err)+'</span>';
 });
 </script>
 </body>
