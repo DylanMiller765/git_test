@@ -1,0 +1,108 @@
+=>[...document.querySelectorAll(s)], save=()=>localStorage.setItem(KEY,JSON.stringify(S));
+function show(id){$$('.section').forEach(x=>x.classList.toggle('active',x.id===id));$$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.sec===id));window.scrollTo({top:0,behavior:'smooth'})}
+$$('.nav button').forEach(b=>b.onclick=()=>show(b.dataset.sec));
+function days(){const a=new Date();a.setHours(0,0,0,0);const b=new Date(D.examDate+'T00:00:00');return Math.ceil((b-a)/86400000)}
+function ready(){let lp=S.mastered.length/D.lessons.length;let cp=Object.values(S.checks).filter(Boolean).length/D.checklist.length;return Math.round(lp*35+cp*15+(S.bestMock||0)/100*50)}
+function stats(){let r=ready();$('#ring').style.setProperty('--pct',r);$('#ringVal').textContent=r+'%';$('#days').textContent=Math.max(0,days());$('#mastered').textContent=S.mastered.length+'/'+D.lessons.length;$('#bestMock').textContent=(S.bestMock||0)+'%';$('#weakCount').textContent=S.weak.length}
+function renderOverview(){
+ $('#chapterCards').innerHTML=D.chapters.map(c=>`<div class="chapter-card"><div class="tag">${c.tag}</div><h3>${c.title.replace(/^Chapter \d+ — /,'')}</h3><p>${c.summary}</p></div>`).join('');
+ $('#checklist').innerHTML=D.checklist.map((x,i)=>`<label class="checkrow"><input type="checkbox" data-check="${i}" ${S.checks[i]?'checked':''}><span>${x}</span></label>`).join('');
+ $$('[data-check]').forEach(c=>c.onchange=()=>{S.checks[c.dataset.check]=c.checked;save();stats()});
+}
+function renderLessons(){
+ let f=$('#learnFilter')?$('#learnFilter').value:'All';
+ const vb=$('#chapterVideo');
+ if(vb){
+   if(f==='All') vb.innerHTML='<div class="video-break"><b>🎬 Video mode</b><div class="tiny">Pick a chapter above and I’ll show the exact videos for that chapter here.</div></div>';
+   else { const vids=CHAPTER_VIDEOS[f]||[]; vb.innerHTML=`<div class="video-break"><b>🎬 ${f} video break</b>${vids.map(v=>`<a href="${v[1]}" target="_blank" rel="noopener">▶ ${v[0]}</a>`).join('')}<div class="tiny">Watch first, then come back and use Check yourself. No need to take full notes.</div></div>`; }
+ }
+ $('#lessons').innerHTML=D.lessons.map((l,i)=>({l,i})).filter(x=>f==='All'||x.l.topic===f).map(({l,i})=>`<div class="card lesson"><button class="master ${S.mastered.includes(i)?'done':''}" data-m="${i}">${S.mastered.includes(i)?'Mastered ✓':'Mark mastered'}</button><div class="tag">${l.topic}</div><h3>${l.title}</h3>${l.body}<div class="funfact"><b>🤯 Fun fact:</b> ${FUN_FACTS[i]||''}</div></div>`).join('');
+ $$('[data-m]').forEach(b=>b.onclick=()=>{let i=+b.dataset.m;S.mastered=S.mastered.includes(i)?S.mastered.filter(x=>x!==i):[...S.mastered,i];save();renderLessons();stats()});
+ $$('#lessons .lesson').forEach(card=>{
+   const m=card.querySelector('[data-m]'), box=card.querySelector('.self');
+   if(!m||!box)return;
+   const answers=SELF_ANSWERS[+m.dataset.m];
+   if(!answers||box.querySelector('.self-answer-btn'))return;
+   const tools=document.createElement('div'); tools.className='self-tools';
+   const btn=document.createElement('button'); btn.type='button'; btn.className='self-answer-btn'; btn.textContent='Show answers';
+   const panel=document.createElement('div'); panel.className='self-answers';
+   panel.innerHTML='<div>Answers</div><ol>'+answers.map(a=>`<li>${a}</li>`).join('')+'</ol>';
+   btn.onclick=()=>{const open=panel.classList.toggle('show');btn.textContent=open?'Hide answers':'Show answers'};
+   tools.appendChild(btn); box.appendChild(tools); box.appendChild(panel);
+ });
+}
+if($('#learnFilter')) $('#learnFilter').onchange=renderLessons;
+let flashPool=[],fi=0;
+function makeFlash(){let f=$('#flashFilter').value;flashPool=D.flashcards.map((x,i)=>[x,i]).filter(([x])=>f==='All'||x.topic===f).map(x=>x[1]).sort(()=>Math.random()-.5);fi=0;renderFlash()}
+function renderFlash(){if(!flashPool.length)return;let x=D.flashcards[flashPool[fi%flashPool.length]];$('#flashcard').classList.remove('flipped');$('#flashFront').textContent=x.front;$('#flashBack').textContent=x.back;$('#flashCount').textContent=`${fi+1} / ${flashPool.length} · ${x.topic}`}
+$('#flashcard').onclick=()=>$('#flashcard').classList.toggle('flipped');$('#nextFlash').onclick=()=>{fi=(fi+1)%flashPool.length;renderFlash()};$('#prevFlash').onclick=()=>{fi=(fi-1+flashPool.length)%flashPool.length;renderFlash()};$('#shuffleFlash').onclick=makeFlash;$('#flashFilter').onchange=makeFlash;
+function addWeak(x){if(!S.weak.some(w=>w.q===x.q)){S.weak.push({topic:x.topic,q:x.q,model:x.model||x.answer||'',points:x.points||[]});save();stats();renderMistakes()}}
+let currentFrq=null;
+function newFrq(){let f=$('#frqFilter').value,p=D.frqs.filter(x=>f==='All'||x.topic===f);currentFrq=p[Math.floor(Math.random()*p.length)];let n=currentFrq.points.length;$('#frqCard').innerHTML=`<div class="tag">${currentFrq.topic}</div><div class="q">${currentFrq.q}</div><textarea placeholder="Write your answer from memory…"></textarea><div class="controls"><button class="btn warn" id="showRubric">Reveal rubric + model answer</button></div><div class="rubric" id="frqRubric"><h3>Scoring rubric — ${n} points</h3><ul>${currentFrq.points.map(x=>`<li>${x}</li>`).join('')}</ul><div class="model"><b>Strong answer:</b><br>${currentFrq.model}</div><p><b>How many points did you earn?</b></p><div class="score-buttons">${Array.from({length:n+1},(_,i)=>`<button data-frscore="${i}">${i}/${n}</button>`).join('')}</div></div>`;$('#showRubric').onclick=()=>$('#frqRubric').classList.add('show');$$('[data-frscore]').forEach(b=>b.onclick=()=>{let v=+b.dataset.frscore;if(v<n)addWeak(currentFrq);b.style.borderColor='var(--green)';b.style.color='var(--green2)'})}
+$('#newFrq').onclick=newFrq;$('#frqFilter').onchange=newFrq;
+let di=0, dorder=[];function newDiagrams(){dorder=D.diagrams.map((_,i)=>i).sort(()=>Math.random()-.5);di=0;renderDiagram()}function renderDiagram(){let d=D.diagrams[dorder[di%dorder.length]];$('#diagramCard').innerHTML=`<div class="tag">${d.topic}</div><img src="${d.image}" alt="Professor lecture slide crop"><h3 style="margin-top:14px">${d.prompt}</h3><button class="btn warn" id="showDiag">Reveal answer</button><div class="answer" id="diagAns"><b>Answer:</b> ${d.answer}</div>`;$('#showDiag').onclick=()=>$('#diagAns').classList.add('show')}$('#nextDiagram').onclick=()=>{di=(di+1)%dorder.length;renderDiagram()};
+let qi=0,qorder=[];function newMcq(){let f=$('#mcqFilter')?$('#mcqFilter').value:'All';qorder=D.questions.map((q,i)=>({q,i})).filter(x=>f==='All'||x.q.topic===f).map(x=>x.i).sort(()=>Math.random()-.5);qi=0;renderMcq()}function renderMcq(){if(!qorder.length){$('#mcqCard').innerHTML='<p>No questions for this chapter yet.</p>';return}let q=D.questions[qorder[qi%qorder.length]];$('#mcqCard').innerHTML=`<div class="tag">${q.topic}</div><h3>${q.q}</h3>${q.choices.map((c,i)=>`<button class="choice" data-c="${i}">${String.fromCharCode(65+i)}. ${c}</button>`).join('')}<div class="explain" id="explain"><b>Why:</b> ${q.explanation}</div>`;let lock=false;$$('[data-c]').forEach(b=>b.onclick=()=>{if(lock)return;lock=true;let p=+b.dataset.c;$$('[data-c]').forEach((x,i)=>{if(i===q.answer)x.classList.add('correct');if(i===p&&p!==q.answer)x.classList.add('wrong');x.disabled=true});$('#explain').classList.add('show')})}$('#nextMcq').onclick=()=>{qi=(qi+1)%qorder.length;renderMcq()};if($('#mcqFilter'))$('#mcqFilter').onchange=newMcq;if($('#reshuffleMcq'))$('#reshuffleMcq').onclick=newMcq;
+let mock=[];function startMock(){let by={};D.frqs.forEach((x,i)=>(by[x.topic]??=[]).push(i));mock=[];['Ch 1','Ch 2','Ch 3','Ch 4','Ch 5'].forEach(t=>{let a=[...by[t]].sort(()=>Math.random()-.5);mock.push(...a.slice(0,2))});mock=mock.sort(()=>Math.random()-.5);$('#mockResult').innerHTML='';renderMock()}
+function renderMock(){let total=0;$('#mockList').innerHTML=mock.map((idx,k)=>{let q=D.frqs[idx],n=q.points.length;total+=n;return `<div class="mock-q" data-mq="${k}"><div class="tag">${q.topic}</div><h3>${k+1}. ${q.q}</h3><textarea placeholder="Closed notes — write your answer…"></textarea><div class="mock-rubric"><h4>Rubric (${n} pts)</h4><ul>${q.points.map(x=>`<li>${x}</li>`).join('')}</ul><div class="model"><b>Strong answer:</b><br>${q.model}</div><p>Score:</p><div class="score-buttons">${Array.from({length:n+1},(_,i)=>`<button data-mscore="${k}:${i}:${n}">${i}/${n}</button>`).join('')}</div></div></div>`}).join('');$('#mockList').dataset.total=total;$('#mockBar').style.width='0%'}
+$('#revealMock').onclick=()=>{$$('.mock-rubric').forEach(x=>x.classList.add('show'));setupMockScores()};
+function setupMockScores(){let scored={};$$('[data-mscore]').forEach(b=>b.onclick=()=>{let [k,v,n]=b.dataset.mscore.split(':').map(Number);scored[k]={v,n};b.closest('.score-buttons').querySelectorAll('button').forEach(x=>{x.style.borderColor='';x.style.color=''});b.style.borderColor='var(--green)';b.style.color='var(--green2)';if(v<n)addWeak(D.frqs[mock[k]]);let done=Object.keys(scored).length;$('#mockBar').style.width=(done/mock.length*100)+'%';if(done===mock.length){let got=Object.values(scored).reduce((a,x)=>a+x.v,0),tot=Object.values(scored).reduce((a,x)=>a+x.n,0),pct=Math.round(got/tot*100);if(pct>S.bestMock)S.bestMock=pct;save();stats();let cls=pct>=90?'good':pct>=75?'mid':'bad';$('#mockResult').innerHTML=`<div class="card"><div class="result ${cls}">${pct}%</div><h3>${pct>=90?'Strong. Do it again and clean up the misses.':pct>=75?'Close. Hit the Mistake Log, then retake.':'Not ready yet. Go back to weak chapters and repeat FR prompts.'}</h3><p>${got}/${tot} rubric points.</p></div>`}})}
+$('#startMock').onclick=startMock;
+function renderMistakes(){if(!S.weak.length){$('#mistakeList').innerHTML='<div class="card"><h3>No weak prompts logged yet.</h3><p>Any free-response answer you self-score below full credit will appear here.</p></div>';return}$('#mistakeList').innerHTML=S.weak.map((w,i)=>`<div class="card mistake"><div class="tag">${w.topic}</div><h3>${w.q}</h3><div class="model"><b>Target answer:</b><br>${w.model}</div><button class="btn ghost" data-resolve="${i}" style="margin-top:10px">I can answer this cold now ✓</button></div>`).join('');$$('[data-resolve]').forEach(b=>b.onclick=()=>{S.weak.splice(+b.dataset.resolve,1);save();renderMistakes();stats()})}
+// Pomodoro: 25m focus -> 5m break -> switch subject -> repeat.
+const POMO_KEY='geol1304_pomodoro_v1';
+const FOCUS_SECS=25*60, BREAK_SECS=5*60;
+let P=JSON.parse(localStorage.getItem(POMO_KEY)||'null')||{subject:'GEOL',phase:'focus',left:FOCUS_SECS,running:false,endsAt:null};
+let pomoTimer=null, pomoAudio=null;
+function savePomo(){localStorage.setItem(POMO_KEY,JSON.stringify(P))}
+function pomoTotal(){return P.phase==='focus'?FOCUS_SECS:BREAK_SECS}
+function nextSubject(s){return s==='GEOL'?'Linear Algebra':'GEOL'}
+function fmtTime(sec){sec=Math.max(0,Math.ceil(sec));return String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0')}
+function ensureAudio(){try{if(!pomoAudio)pomoAudio=new (window.AudioContext||window.webkitAudioContext)();if(pomoAudio.state==='suspended')pomoAudio.resume()}catch(e){}}
+function beep(){try{if(!pomoAudio)return;let o=pomoAudio.createOscillator(),g=pomoAudio.createGain();o.connect(g);g.connect(pomoAudio.destination);o.frequency.value=740;g.gain.setValueAtTime(.12,pomoAudio.currentTime);g.gain.exponentialRampToValueAtTime(.001,pomoAudio.currentTime+.35);o.start();o.stop(pomoAudio.currentTime+.35)}catch(e){}}
+function renderPomo(){
+  if(!$('#pomoTime'))return;
+  $('#pomoTime').textContent=fmtTime(P.left);
+  $('#pomoPhase').textContent=P.phase==='focus'?'Focus':'Break';
+  $('#pomoSubject').textContent=P.phase==='focus'?`${P.subject} focus`:`Break · next: ${nextSubject(P.subject)}`;
+  $('#pomoStart').textContent=P.running?'Pause':'Start';
+  $('#pomoNext').textContent=P.phase==='focus'?`Switch to ${nextSubject(P.subject)} →`:`Skip break → ${nextSubject(P.subject)}`;
+  $('#pomoBar').style.width=Math.max(0,Math.min(100,(P.left/pomoTotal())*100))+'%';
+  document.title=(P.running?fmtTime(P.left)+' · ':'')+'GEOL 1304 Test 1';
+}
+function finishPomo(){
+  beep();
+  if(P.phase==='focus'){
+    P.phase='break';P.left=BREAK_SECS;P.running=true;P.endsAt=Date.now()+BREAK_SECS*1000;
+  }else{
+    P.subject=nextSubject(P.subject);P.phase='focus';P.left=FOCUS_SECS;P.running=false;P.endsAt=null;
+  }
+  savePomo();renderPomo();
+}
+function tickPomo(){
+  if(P.running&&P.endsAt){P.left=Math.max(0,Math.ceil((P.endsAt-Date.now())/1000));if(P.left<=0){finishPomo();return}}
+  renderPomo();
+}
+function startPomo(){
+  ensureAudio();
+  if(P.running){P.left=Math.max(0,Math.ceil((P.endsAt-Date.now())/1000));P.running=false;P.endsAt=null}
+  else{P.running=true;P.endsAt=Date.now()+P.left*1000}
+  savePomo();tickPomo();
+}
+function resetPomo(){P.phase='focus';P.left=FOCUS_SECS;P.running=false;P.endsAt=null;savePomo();renderPomo()}
+function advancePomo(){
+  if(P.phase==='break')P.subject=nextSubject(P.subject);else P.subject=nextSubject(P.subject);
+  P.phase='focus';P.left=FOCUS_SECS;P.running=false;P.endsAt=null;savePomo();renderPomo();
+}
+if(P.running&&P.endsAt&&P.endsAt<=Date.now()){
+  // Recover sensibly after a refresh/tab sleep.
+  if(P.phase==='focus'){P.phase='break';P.left=BREAK_SECS;P.running=false;P.endsAt=null}
+  else{P.subject=nextSubject(P.subject);P.phase='focus';P.left=FOCUS_SECS;P.running=false;P.endsAt=null}
+  savePomo();
+}
+if($('#pomoStart'))$('#pomoStart').onclick=startPomo;
+if($('#pomoReset'))$('#pomoReset').onclick=resetPomo;
+if($('#pomoNext'))$('#pomoNext').onclick=advancePomo;
+pomoTimer=setInterval(tickPomo,500);renderPomo();
+
+renderOverview();renderLessons();makeFlash();newFrq();newDiagrams();newMcq();startMock();renderMistakes();stats();
+</script></body></html>
